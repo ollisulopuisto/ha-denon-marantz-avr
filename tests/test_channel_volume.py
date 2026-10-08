@@ -1,5 +1,7 @@
 """Tests for channel_volume module."""
 
+import logging
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -462,3 +464,18 @@ class TestSendCvCommand:
             await manager.async_send_cv_command("FL", 3.0)
 
         assert manager.pending_counters["FL"] == 0
+
+
+class TestExtraChannelCodes:
+    @pytest.mark.parametrize(
+        "code", ["SBL", "SBR", "SB", "FHL", "FHR", "FWL", "FWR", "SW2"]
+    )
+    def test_extra_speaker_codes_not_warned(self, manager_with_entities, caplog, code):
+        manager, entities = manager_with_entities
+
+        with caplog.at_level(logging.WARNING):
+            manager._cv_callback("Main", "CV", f"{code} 50")
+
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+        for entity in entities.values():
+            entity.async_write_ha_state.assert_not_called()

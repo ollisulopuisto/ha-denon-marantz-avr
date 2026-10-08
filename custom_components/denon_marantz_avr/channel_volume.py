@@ -21,6 +21,7 @@ from .const import (
     CV_TELNET_TIMEOUT,
     MAX_CHANNEL_VOLUME_DB,
     MIN_CHANNEL_VOLUME_DB,
+    UNMAPPED_CHANNEL_CODES,
     ZONE_PREFIXES,
 )
 
@@ -217,6 +218,10 @@ class ChannelVolumeManager:
 
             channel_code = parts[0]
             protocol_value = parts[1]
+
+            if channel_code in UNMAPPED_CHANNEL_CODES:
+                _LOGGER.debug("Ignoring CV event for unmapped channel %s", channel_code)
+                return
 
             # Validate channel code
             if channel_code not in CHANNEL_MAP:

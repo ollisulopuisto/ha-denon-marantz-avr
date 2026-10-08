@@ -40,6 +40,11 @@ CHANNEL_MAP = {
     "SW": "Subwoofer",
 }
 
+# Channels the AVR-4520 reports in CV events but has no entity for
+UNMAPPED_CHANNEL_CODES = frozenset(
+    {"SBL", "SBR", "SB", "FHL", "FHR", "FWL", "FWR", "SW2"}
+)
+
 # Protocol value to dB conversion
 # Protocol: 38-62 (integer), Display: -12.0 to +12.0 dB (float)
 MIN_CHANNEL_VOLUME_DB = -12.0
