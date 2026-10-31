@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING
 from xml.etree import ElementTree as ET
 
@@ -62,12 +63,17 @@ class SoundModeSettings:
     genre: int | None
     items: Sequence[SoundModeItem]
 
-    @property
+    # Performance optimization: Memoize derived properties on immutable
+    # SoundModeSettings. Multiple Home Assistant entities (MediaPlayer and
+    # SoundModeSelect) repeatedly query .names and .current during every state
+    # read. Caching prevents repeatedly allocating new lists and running O(N)
+    # linear scans. _indices provides O(1) mode index lookups.
+    @cached_property
     def names(self) -> list[str]:
         """Return the selectable sound-mode names, in receiver order."""
         return [item.name for item in self.items]
 
-    @property
+    @cached_property
     def current(self) -> str | None:
         """Return the name of the currently selected sound mode."""
         for item in self.items:
@@ -75,12 +81,14 @@ class SoundModeSettings:
                 return item.name
         return None
 
+    @cached_property
+    def _indices(self) -> dict[str, int]:
+        """Return mapping from sound-mode name to receiver index for O(1) lookup."""
+        return {item.name: item.index for item in self.items}
+
     def index_for(self, name: str) -> int | None:
         """Return the receiver index for a mode name, if present."""
-        for item in self.items:
-            if item.name == name:
-                return item.index
-        return None
+        return self._indices.get(name)
 
 
 def _base_url(host: str) -> str:
