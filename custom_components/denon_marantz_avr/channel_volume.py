@@ -36,6 +36,9 @@ _LOGGER = logging.getLogger(__name__)
 # after the first successful HTTP update are no-ops.
 _RECEIVER_UPDATE_DEBOUNCE_S: float = 5.0
 
+# Standard protocol offset (50 = 0.0 dB) used by Denon/Marantz receivers
+_DEFAULT_PROTOCOL_OFFSET: int = 50
+
 
 class ChannelVolumeManager:
     """
@@ -607,7 +610,25 @@ class ChannelVolumeManager:
                 self._cv_reader = None
 
 
-def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
+# Performance optimization: Precomputed bidirectional lookup tables for standard
+# channel volume conversions (offset=50, -12.0 dB to +12.0 dB in 0.5 dB steps).
+# There are only 49 valid discrete steps. Precomputing these enables O(1) dictionary
+# lookups instead of repeated string formatting, modulo checks, and float division
+# on high-frequency Telnet CV event callbacks and channel volume changes.
+_DB_TO_PROTOCOL: dict[float, str] = {
+    round(i * 0.5, 1): (
+        str(int(i * 0.5) + _DEFAULT_PROTOCOL_OFFSET)
+        if i % 2 == 0
+        else str(int((round(i * 0.5, 1) + _DEFAULT_PROTOCOL_OFFSET) * 10))
+    )
+    for i in range(-24, 25)
+}
+_PROTOCOL_TO_DB: dict[str, float] = {proto: db for db, proto in _DB_TO_PROTOCOL.items()}
+
+
+def protocol_to_db(
+    protocol_value: str, offset: int = _DEFAULT_PROTOCOL_OFFSET
+) -> float:
     """
     Convert protocol value to dB.
 
@@ -625,19 +646,25 @@ def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
         "38" → -12.0 dB
 
     """
+    # Fast path: O(1) lookup for standard offset (offset=50)
+    cleaned = protocol_value.strip()
+    if offset == _DEFAULT_PROTOCOL_OFFSET:
+        fast_val = _PROTOCOL_TO_DB.get(cleaned)
+        if fast_val is not None:
+            return fast_val
+
     # Length for 3-digit half-dB step values
     half_db_length = 3
 
-    protocol_value = protocol_value.strip()
-    raw = int(protocol_value)
-    if len(protocol_value) == half_db_length:
+    raw = int(cleaned)
+    if len(cleaned) == half_db_length:
         # 3-digit: half dB step
         return raw / 10 - offset
     # 2-digit: whole dB step
     return float(raw - offset)
 
 
-def db_to_protocol(db_value: float, offset: int = 50) -> str:
+def db_to_protocol(db_value: float, offset: int = _DEFAULT_PROTOCOL_OFFSET) -> str:
     """
     Convert dB to protocol value.
 
@@ -655,6 +682,12 @@ def db_to_protocol(db_value: float, offset: int = 50) -> str:
         -12.0 → "38"
 
     """
+    # Fast path: O(1) lookup for standard offset (offset=50)
+    if offset == _DEFAULT_PROTOCOL_OFFSET:
+        fast_val = _DB_TO_PROTOCOL.get(db_value)
+        if fast_val is not None:
+            return fast_val
+
     if db_value % 1 == 0:
         # Whole dB: 2-digit string
         return str(int(db_value) + offset)
