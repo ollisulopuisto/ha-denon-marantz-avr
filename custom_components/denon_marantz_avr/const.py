@@ -70,6 +70,14 @@ DEFAULT_POWER_OFF_DELAY = 5
 DEFAULT_POWER_ON_DELAY = 12
 ECO_MODE_OPTIONS = ["Off", "Auto", "On"]
 
+# Telnet events that affect Audyssey, Eco, Sound Mode, and receiver settings
+# managed by DenonControlsCoordinator. Only subscribing to these prevents
+# wasteful entity state writes and re-renders during high-frequency stream progress
+# (NSE/NS/HD), master volume (MV), or channel volume (CV) events.
+CONTROLS_TELNET_EVENTS: frozenset[str] = frozenset(
+    {"BT", "ECO", "MS", "PS", "SLP", "SP"}
+)
+
 # Speaker preset slots (the receiver exposes presets 1 and 2)
 SPEAKER_PRESET_OPTIONS = ["1", "2"]
 
