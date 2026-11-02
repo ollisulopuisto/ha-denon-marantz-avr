@@ -15,7 +15,6 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING
 
-from denonavr.const import ALL_TELNET_EVENTS
 from denonavr.exceptions import DenonAvrError
 from homeassistant.core import callback
 from homeassistant.helpers.httpx_client import get_async_client
@@ -23,6 +22,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CONTROLS_SCAN_INTERVAL,
+    CONTROLS_TELNET_EVENTS,
     DEFAULT_POWER_OFF_DELAY,
     DEFAULT_POWER_ON_DELAY,
     DOMAIN,
@@ -106,13 +106,21 @@ class DenonControlsCoordinator(DataUpdateCoordinator[None]):
         callback that unregisters the listener.
         """
 
+        # Performance optimization: Only subscribe to Telnet events that affect
+        # controls managed by this coordinator (CONTROLS_TELNET_EVENTS).
+        # Subscribing to ALL_TELNET_EVENTS causes high-frequency events (such as
+        # streaming progress NSE, volume MV, or channel volume CV) to trigger
+        # async_set_updated_data(None), which needlessly updates and writes state
+        # for all ~10 coordinator entities on every tick.
         def _telnet_callback(zone: str, event: str, parameter: str) -> None:  # noqa: ARG001
             self.async_set_updated_data(None)
 
-        self.receiver.register_callback(ALL_TELNET_EVENTS, _telnet_callback)
+        for event in CONTROLS_TELNET_EVENTS:
+            self.receiver.register_callback(event, _telnet_callback)
 
         def _unregister() -> None:
-            self.receiver.unregister_callback(ALL_TELNET_EVENTS, _telnet_callback)
+            for event in CONTROLS_TELNET_EVENTS:
+                self.receiver.unregister_callback(event, _telnet_callback)
 
         return _unregister
 

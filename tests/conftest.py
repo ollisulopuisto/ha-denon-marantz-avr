@@ -56,12 +56,61 @@ _ha_const_mod = types.ModuleType("homeassistant.const")
 _ha_const_mod.Platform = _Platform
 sys.modules["homeassistant.const"] = _ha_const_mod
 
+# homeassistant.helpers.update_coordinator & core
+_ha_coord = types.ModuleType("homeassistant.helpers.update_coordinator")
+
+
+class _DataUpdateCoordinator:
+    def __init__(self, hass, logger, *, name, update_interval=None):
+        self.hass = hass
+        self.logger = logger
+        self.name = name
+        self.update_interval = update_interval
+
+    def __class_getitem__(cls, item):
+        return cls
+
+    def async_set_updated_data(self, data):
+        pass
+
+
+class _UpdateFailed(Exception):  # noqa: N818
+    pass
+
+
+_ha_coord.DataUpdateCoordinator = _DataUpdateCoordinator
+_ha_coord.UpdateFailed = _UpdateFailed
+
+_ha_core = types.ModuleType("homeassistant.core")
+_ha_core.callback = lambda f: f
+
+_ha_httpx = types.ModuleType("homeassistant.helpers.httpx_client")
+_ha_httpx.get_async_client = MagicMock()
+
+sys.modules.setdefault(
+    "homeassistant.helpers", types.ModuleType("homeassistant.helpers")
+)
+sys.modules["homeassistant.helpers.update_coordinator"] = _ha_coord
+sys.modules["homeassistant.core"] = _ha_core
+sys.modules["homeassistant.helpers.httpx_client"] = _ha_httpx
+
 # denonavr
 _denonavr_const = types.ModuleType("denonavr.const")
 _denonavr_const.POWER_ON = "ON"
+_denonavr_const.ALL_TELNET_EVENTS = "ALL"
+
+_denonavr_exc = types.ModuleType("denonavr.exceptions")
+
+
+class _DenonAvrError(Exception):
+    pass
+
+
+_denonavr_exc.DenonAvrError = _DenonAvrError
 
 sys.modules.setdefault("denonavr", types.ModuleType("denonavr"))
 sys.modules["denonavr.const"] = _denonavr_const
+sys.modules["denonavr.exceptions"] = _denonavr_exc
 
 # ---------------------------------------------------------------------------
 # Stub the custom_components.denon_marantz_avr *package* to bypass __init__.py,
