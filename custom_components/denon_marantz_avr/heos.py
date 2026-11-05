@@ -45,6 +45,13 @@ class HeosStreaming:
         self.player: HeosPlayer | None = None
         self.favorites: dict[int, MediaItem] = {}
         self.inputs: Sequence[MediaItem] = []
+        # Precomputed lookup tables for O(1) source and favorite queries
+        self._source_list: list[str] = []
+        self._favorite_indices: dict[str, int] = {}
+        self._inputs_by_name: dict[str, str] = {}
+        self._inputs_by_media_id: dict[str, str] = {}
+        self._favorites_by_name: dict[str, str] = {}
+        self._favorites_by_media_id: dict[str, str] = {}
         self.connected = False
 
     async def async_connect(self) -> bool:
@@ -99,18 +106,69 @@ class HeosStreaming:
                 self.favorites = await self.heos.get_favorites()
         with suppress(HeosError):
             self.inputs = await self.heos.get_input_sources()
+        self._rebuild_source_lookups()
+
+    def _rebuild_source_lookups(self) -> None:
+        """
+        Rebuild precomputed source and favorite lookup mappings.
+
+        Performance optimization: Precalculating these structures whenever
+        sources are refreshed avoids repeated list allocations and linear
+        O(N) scans on every Home Assistant state read and playback progress
+        event.
+        """
+        fav_names = [favorite.name for favorite in self.favorites.values()]
+        input_names = [source.name for source in self.inputs]
+        self._source_list = fav_names + input_names
+
+        self._favorite_indices = {
+            favorite.name: index for index, favorite in self.favorites.items()
+        }
+
+        self._inputs_by_name = {source.name: source.name for source in self.inputs}
+        self._inputs_by_media_id = {
+            source.media_id: source.name
+            for source in self.inputs
+            if source.media_id is not None
+        }
+
+        self._favorites_by_name = {
+            favorite.name: favorite.name for favorite in self.favorites.values()
+        }
+        self._favorites_by_media_id = {
+            favorite.media_id: favorite.name
+            for favorite in self.favorites.values()
+            if favorite.media_id is not None
+        }
 
     def source_list(self) -> list[str]:
         """Return favorite + input source names."""
-        names = [favorite.name for favorite in self.favorites.values()]
-        names.extend(source.name for source in self.inputs)
-        return names
+        return list(self._source_list)
 
     def favorite_index(self, name: str) -> int | None:
         """Return the preset index of a favorite by name."""
-        for index, favorite in self.favorites.items():
-            if favorite.name == name:
-                return index
+        return self._favorite_indices.get(name)
+
+    def resolve_source(
+        self,
+        station: str | None,
+        media_id: str | None,
+        album_id: str | None,
+    ) -> str | None:
+        """
+        Resolve the source name from playing media attributes in O(1) time.
+
+        Preserves precedence: input sources take priority over favorites,
+        and station name match takes priority over media_id / album_id match.
+        """
+        if station is not None and (name := self._inputs_by_name.get(station)):
+            return name
+        if media_id is not None and (name := self._inputs_by_media_id.get(media_id)):
+            return name
+        if station is not None and (name := self._favorites_by_name.get(station)):
+            return name
+        if album_id is not None and (name := self._favorites_by_media_id.get(album_id)):
+            return name
         return None
 
     async def async_disconnect(self) -> None:

@@ -203,14 +203,14 @@ class HeosStreamingPlayer(MediaPlayerEntity):
     @property
     def source(self) -> str | None:
         """Return the current source name (favorite/input) if matched."""
+        # Performance optimization: Use O(1) hash map lookup instead of
+        # linear O(N) scans over inputs and favorites on every state read.
         now = self._player.now_playing_media
-        for source in self._streaming.inputs:
-            if source.name == now.station or source.media_id == now.media_id:
-                return source.name
-        for favorite in self._streaming.favorites.values():
-            if favorite.name == now.station or favorite.media_id == now.album_id:
-                return favorite.name
-        return None
+        return self._streaming.resolve_source(
+            station=now.station,
+            media_id=now.media_id,
+            album_id=now.album_id,
+        )
 
     @property
     def media_title(self) -> str | None:
