@@ -7,110 +7,105 @@ from unittest.mock import MagicMock
 import pytest
 
 # ---------------------------------------------------------------------------
-# Stub third-party packages that can't be installed in this environment:
-#
-#   homeassistant — requires Python 3.13.2+; only 3.11.x is available
-#   denonavr      — needs netifaces C extension which requires gcc
-#
-# These stubs must be in sys.modules BEFORE any custom_components import.
+# Fallback stubs for environments where homeassistant / denonavr are not installed.
+# If real packages are available, use them directly.
 # ---------------------------------------------------------------------------
+try:
+    import homeassistant.components.media_player
+    import homeassistant.components.number
+    import homeassistant.const
+    import homeassistant.core
+    import homeassistant.helpers.httpx_client
+    import homeassistant.helpers.update_coordinator
+except ImportError:
 
+    class _NumberEntity:
+        """Minimal NumberEntity base class for testing."""
 
-# homeassistant.components.number
-class _NumberEntity:
-    """Minimal NumberEntity base class for testing."""
+        _attr_should_poll = False
+        _attr_name = None
+        _attr_unique_id = None
+        _attr_device_info = None
+        _attr_icon = None
 
-    _attr_should_poll = False
-    _attr_name = None
-    _attr_unique_id = None
-    _attr_device_info = None
-    _attr_icon = None
+        def __init_subclass__(cls, **kwargs):
+            super().__init_subclass__(**kwargs)
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
+    _ha_number_mod = types.ModuleType("homeassistant.components.number")
+    _ha_number_mod.NumberEntity = _NumberEntity
 
+    sys.modules.setdefault("homeassistant", types.ModuleType("homeassistant"))
+    sys.modules.setdefault(
+        "homeassistant.components", types.ModuleType("homeassistant.components")
+    )
+    sys.modules["homeassistant.components.number"] = _ha_number_mod
+    sys.modules.setdefault("homeassistant.core", types.ModuleType("homeassistant.core"))
 
-_ha_number_mod = types.ModuleType("homeassistant.components.number")
-_ha_number_mod.NumberEntity = _NumberEntity
+    class _Platform:
+        """Minimal stand-in for homeassistant.const.Platform."""
 
-sys.modules.setdefault("homeassistant", types.ModuleType("homeassistant"))
-sys.modules.setdefault(
-    "homeassistant.components", types.ModuleType("homeassistant.components")
-)
-sys.modules["homeassistant.components.number"] = _ha_number_mod
-sys.modules.setdefault("homeassistant.core", types.ModuleType("homeassistant.core"))
+        MEDIA_PLAYER = "media_player"
+        NUMBER = "number"
+        BUTTON = "button"
+        SELECT = "select"
+        SWITCH = "switch"
 
+    _ha_const_mod = types.ModuleType("homeassistant.const")
+    _ha_const_mod.Platform = _Platform
+    sys.modules["homeassistant.const"] = _ha_const_mod
 
-# homeassistant.const (Platform enum used by const.py)
-class _Platform:
-    """Minimal stand-in for homeassistant.const.Platform."""
+    _ha_coord = types.ModuleType("homeassistant.helpers.update_coordinator")
 
-    MEDIA_PLAYER = "media_player"
-    NUMBER = "number"
-    BUTTON = "button"
-    SELECT = "select"
-    SWITCH = "switch"
+    class _DataUpdateCoordinator:
+        def __init__(self, hass, logger, *, name, update_interval=None):
+            self.hass = hass
+            self.logger = logger
+            self.name = name
+            self.update_interval = update_interval
 
+        def __class_getitem__(cls, item):
+            return cls
 
-_ha_const_mod = types.ModuleType("homeassistant.const")
-_ha_const_mod.Platform = _Platform
-sys.modules["homeassistant.const"] = _ha_const_mod
+        def async_set_updated_data(self, data):
+            pass
 
-# homeassistant.helpers.update_coordinator & core
-_ha_coord = types.ModuleType("homeassistant.helpers.update_coordinator")
-
-
-class _DataUpdateCoordinator:
-    def __init__(self, hass, logger, *, name, update_interval=None):
-        self.hass = hass
-        self.logger = logger
-        self.name = name
-        self.update_interval = update_interval
-
-    def __class_getitem__(cls, item):
-        return cls
-
-    def async_set_updated_data(self, data):
+    class _UpdateFailed(Exception):  # noqa: N818
         pass
 
+    _ha_coord.DataUpdateCoordinator = _DataUpdateCoordinator
+    _ha_coord.UpdateFailed = _UpdateFailed
 
-class _UpdateFailed(Exception):  # noqa: N818
-    pass
+    _ha_core = types.ModuleType("homeassistant.core")
+    _ha_core.callback = lambda f: f
 
+    _ha_httpx = types.ModuleType("homeassistant.helpers.httpx_client")
+    _ha_httpx.get_async_client = MagicMock()
 
-_ha_coord.DataUpdateCoordinator = _DataUpdateCoordinator
-_ha_coord.UpdateFailed = _UpdateFailed
+    sys.modules.setdefault(
+        "homeassistant.helpers", types.ModuleType("homeassistant.helpers")
+    )
+    sys.modules["homeassistant.helpers.update_coordinator"] = _ha_coord
+    sys.modules["homeassistant.core"] = _ha_core
+    sys.modules["homeassistant.helpers.httpx_client"] = _ha_httpx
 
-_ha_core = types.ModuleType("homeassistant.core")
-_ha_core.callback = lambda f: f
+try:
+    import denonavr.const
+    import denonavr.exceptions
+except ImportError:
+    _denonavr_const = types.ModuleType("denonavr.const")
+    _denonavr_const.POWER_ON = "ON"
+    _denonavr_const.ALL_TELNET_EVENTS = "ALL"
 
-_ha_httpx = types.ModuleType("homeassistant.helpers.httpx_client")
-_ha_httpx.get_async_client = MagicMock()
+    _denonavr_exc = types.ModuleType("denonavr.exceptions")
 
-sys.modules.setdefault(
-    "homeassistant.helpers", types.ModuleType("homeassistant.helpers")
-)
-sys.modules["homeassistant.helpers.update_coordinator"] = _ha_coord
-sys.modules["homeassistant.core"] = _ha_core
-sys.modules["homeassistant.helpers.httpx_client"] = _ha_httpx
+    class _DenonAvrError(Exception):
+        pass
 
-# denonavr
-_denonavr_const = types.ModuleType("denonavr.const")
-_denonavr_const.POWER_ON = "ON"
-_denonavr_const.ALL_TELNET_EVENTS = "ALL"
+    _denonavr_exc.DenonAvrError = _DenonAvrError
 
-_denonavr_exc = types.ModuleType("denonavr.exceptions")
-
-
-class _DenonAvrError(Exception):
-    pass
-
-
-_denonavr_exc.DenonAvrError = _DenonAvrError
-
-sys.modules.setdefault("denonavr", types.ModuleType("denonavr"))
-sys.modules["denonavr.const"] = _denonavr_const
-sys.modules["denonavr.exceptions"] = _denonavr_exc
+    sys.modules.setdefault("denonavr", types.ModuleType("denonavr"))
+    sys.modules["denonavr.const"] = _denonavr_const
+    sys.modules["denonavr.exceptions"] = _denonavr_exc
 
 # ---------------------------------------------------------------------------
 # Stub the custom_components.denon_marantz_avr *package* to bypass __init__.py,

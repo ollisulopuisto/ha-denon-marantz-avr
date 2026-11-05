@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Concatenate
 
 import voluptuous as vol
 from denonavr.const import (
-    ALL_TELNET_EVENTS,
     ALL_ZONES,
     MAIN_ZONE,
     POWER_ON,
@@ -323,13 +322,21 @@ class DenonDevice(MediaPlayerEntity):
 
     async def async_added_to_hass(self) -> None:
         """Register for telnet events."""
-        self._receiver.register_callback(ALL_TELNET_EVENTS, self._telnet_callback)
+        # Performance optimization: Register only for the specific Telnet events
+        # handled by this media player entity (TELNET_EVENTS).
+        # Subscribing to ALL_TELNET_EVENTS triggers _telnet_callback on every raw
+        # packet emitted by the receiver (e.g. high-frequency channel volume CV,
+        # Eco mode ECO, sleep timer SLP) across all zones, only for them to be
+        # immediately dropped by `if event not in TELNET_EVENTS`.
+        for event in TELNET_EVENTS:
+            self._receiver.register_callback(event, self._telnet_callback)
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up the entity."""
         if self._receiver.telnet_connected:
             await self._receiver.async_telnet_disconnect()
-        self._receiver.unregister_callback(ALL_TELNET_EVENTS, self._telnet_callback)
+        for event in TELNET_EVENTS:
+            self._receiver.unregister_callback(event, self._telnet_callback)
 
     async def _async_update_web_sound_modes(self) -> None:
         """
