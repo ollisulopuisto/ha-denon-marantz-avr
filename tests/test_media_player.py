@@ -67,6 +67,77 @@ async def test_async_added_to_hass_registers_telnet_events(denon_device, mock_re
         assert callback == denon_device._telnet_callback
 
 
+def test_input_func_sets_cached_and_properties(mock_receiver, mock_config_entry):
+    """Test that netaudio and playing function sets are cached and used."""
+    mock_receiver.netaudio_func_list = ["Online Music", "Media Server"]
+    mock_receiver.playing_func_list = ["Online Music", "Media Server", "Bluetooth"]
+    mock_receiver.image_url = "http://example.com/cover.jpg"
+    mock_receiver.title = "Song Title"
+    mock_receiver.frequency = "101.5 MHz"
+
+    device = DenonDevice(
+        receiver=mock_receiver,
+        unique_id="test_unique_id-Main",
+        config_entry=mock_config_entry,
+        update_audyssey=False,
+    )
+
+    # Initial sets should be populated from receiver lists
+    assert device._netaudio_func_set == {"Online Music", "Media Server"}
+    assert device._playing_func_set == {"Online Music", "Media Server", "Bluetooth"}
+
+    # Test supported_features with netaudio input
+    mock_receiver.input_func = "Online Music"
+    features_netaudio = device.supported_features
+    mock_receiver.input_func = "CD"
+    features_cd = device.supported_features
+    assert features_netaudio != features_cd
+
+    # Test media_image_url with playing input
+    mock_receiver.input_func = "Bluetooth"
+    assert device.media_image_url == "http://example.com/cover.jpg"
+    mock_receiver.input_func = "CD"
+    assert device.media_image_url is None
+
+    # Test media_title with playing input vs non-playing input
+    mock_receiver.input_func = "Bluetooth"
+    assert device.media_title == "Song Title"
+    mock_receiver.input_func = "CD"
+    assert device.media_title == "CD"
+
+    # None input_func handled safely
+    mock_receiver.input_func = None
+    assert device.media_image_url is None
+    assert device.media_title is None
+
+
+async def test_update_refreshes_input_func_sets(mock_receiver, mock_config_entry):
+    """Test that async_update refreshes the cached sets."""
+    mock_receiver.telnet_connected = False
+    mock_receiver.telnet_healthy = False
+    mock_receiver.async_update = AsyncMock()
+    mock_receiver.netaudio_func_list = ["Online Music"]
+    mock_receiver.playing_func_list = ["Online Music"]
+
+    device = DenonDevice(
+        receiver=mock_receiver,
+        unique_id="test_unique_id-Main",
+        config_entry=mock_config_entry,
+        update_audyssey=False,
+    )
+    device.hass = MagicMock()
+    device._web_api_available = False
+    assert device._netaudio_func_set == {"Online Music"}
+
+    # Update receiver sources
+    mock_receiver.netaudio_func_list = ["Online Music", "Media Server"]
+    mock_receiver.playing_func_list = ["Online Music", "Media Server"]
+
+    await device.async_update()
+    assert device._netaudio_func_set == {"Online Music", "Media Server"}
+    assert device._playing_func_set == {"Online Music", "Media Server"}
+
+
 async def test_async_will_remove_from_hass_unregisters_telnet_events(
     denon_device, mock_receiver
 ):

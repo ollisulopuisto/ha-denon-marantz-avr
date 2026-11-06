@@ -302,6 +302,22 @@ class DenonDevice(MediaPlayerEntity):
             and MediaPlayerEntityFeature.SELECT_SOUND_MODE
         )
 
+        # Performance optimization: Pre-cache netaudio and playing function
+        # names as sets. In upstream denonavr, .netaudio_func_list and
+        # .playing_func_list are properties that perform a full deepcopy() of
+        # their internal lists on every single invocation. Without caching,
+        # checking membership on every HA state read causes repeated deepcopies
+        # and O(N) linear scans. Using cached sets provides O(1) membership tests
+        # with zero allocations during state reads.
+        self._netaudio_func_set: set[str] = set()
+        self._playing_func_set: set[str] = set()
+        self._update_input_func_sets()
+
+    def _update_input_func_sets(self) -> None:
+        """Update cached sets for netaudio and playing input functions."""
+        self._netaudio_func_set = set(self._receiver.netaudio_func_list)
+        self._playing_func_set = set(self._receiver.playing_func_list)
+
     def _telnet_callback(self, zone: str, event: str, parameter: str) -> None:
         """Process a telnet command callback."""
         # There are multiple checks implemented which reduce unnecessary
@@ -372,6 +388,7 @@ class DenonDevice(MediaPlayerEntity):
             return
 
         await receiver.async_update()
+        self._update_input_func_sets()
 
         if self._update_audyssey:
             await receiver.async_update_audyssey()
@@ -429,7 +446,10 @@ class DenonDevice(MediaPlayerEntity):
     @property
     def supported_features(self) -> MediaPlayerEntityFeature:
         """Flag media player features that are supported."""
-        if self._receiver.input_func in self._receiver.netaudio_func_list:
+        if (
+            self._receiver.input_func is not None
+            and self._receiver.input_func in self._netaudio_func_set
+        ):
             return self._supported_features_base | SUPPORT_MEDIA_MODES
         return self._supported_features_base
 
@@ -443,14 +463,20 @@ class DenonDevice(MediaPlayerEntity):
     @property
     def media_image_url(self) -> str | None:
         """Image url of current playing media."""
-        if self._receiver.input_func in self._receiver.playing_func_list:
+        if (
+            self._receiver.input_func is not None
+            and self._receiver.input_func in self._playing_func_set
+        ):
             return self._receiver.image_url
         return None
 
     @property
     def media_title(self) -> str | None:
         """Title of current playing media."""
-        if self._receiver.input_func not in self._receiver.playing_func_list:
+        if (
+            self._receiver.input_func is None
+            or self._receiver.input_func not in self._playing_func_set
+        ):
             return self._receiver.input_func
         if self._receiver.title is not None:
             return self._receiver.title
