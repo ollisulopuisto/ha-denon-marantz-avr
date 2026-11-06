@@ -1,0 +1,3 @@
+## 2026-03-30 - Upstream denonavr list properties perform expensive deepcopies
+**Learning:** Upstream `denonavr` receiver properties such as `netaudio_func_list` and `playing_func_list` call `deepcopy(...)` on their internal lists every time they are accessed. In Home Assistant entity properties that are accessed on every state poll (`supported_features`, `media_image_url`, `media_title`), querying these lists directly causes repeated deepcopy operations and linear scans.
+**Action:** Always cache these function lists as sets within entity wrappers and refresh them only when the receiver state is polled (`async_update`).
