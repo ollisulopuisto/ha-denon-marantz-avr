@@ -118,6 +118,15 @@ DENON_STATE_MAPPING = {
     STATE_PAUSED: MediaPlayerState.PAUSED,
 }
 
+_PLAYING_MEDIA_STATES = frozenset(
+    {
+        STATE_PLAYING,
+        STATE_PAUSED,
+        MediaPlayerState.PLAYING,
+        MediaPlayerState.PAUSED,
+    }
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001
@@ -302,21 +311,21 @@ class DenonDevice(MediaPlayerEntity):
             and MediaPlayerEntityFeature.SELECT_SOUND_MODE
         )
 
-        # Performance optimization: Pre-cache netaudio and playing function
-        # names as sets. In upstream denonavr, .netaudio_func_list and
-        # .playing_func_list are properties that perform a full deepcopy() of
-        # their internal lists on every single invocation. Without caching,
-        # checking membership on every HA state read causes repeated deepcopies
-        # and O(N) linear scans. Using cached sets provides O(1) membership tests
-        # with zero allocations during state reads.
+        # Performance optimization: Pre-cache netaudio, playing function sets,
+        # and source list. In upstream denonavr, .netaudio_func_list and
+        # .playing_func_list perform deepcopy() on every access, and
+        # .input_func_list sorts dictionary keys on every access. Caching them
+        # avoids repeated deepcopies, sorting, and list allocations on state reads.
         self._netaudio_func_set: set[str] = set()
         self._playing_func_set: set[str] = set()
+        self._source_list: list[str] = []
         self._update_input_func_sets()
 
     def _update_input_func_sets(self) -> None:
-        """Update cached sets for netaudio and playing input functions."""
+        """Update cached sets and source list for input functions."""
         self._netaudio_func_set = set(self._receiver.netaudio_func_list)
         self._playing_func_set = set(self._receiver.playing_func_list)
+        self._source_list = self._receiver.input_func_list
 
     def _telnet_callback(self, zone: str, event: str, parameter: str) -> None:
         """Process a telnet command callback."""
@@ -401,7 +410,7 @@ class DenonDevice(MediaPlayerEntity):
     @property
     def source_list(self) -> list[str]:
         """Return a list of available input sources."""
-        return self._receiver.input_func_list
+        return self._source_list
 
     @property
     def is_volume_muted(self) -> bool:
@@ -456,7 +465,7 @@ class DenonDevice(MediaPlayerEntity):
     @property
     def media_content_type(self) -> MediaType:
         """Content type of current playing media."""
-        if self._receiver.state in {MediaPlayerState.PLAYING, MediaPlayerState.PAUSED}:
+        if self._receiver.state in _PLAYING_MEDIA_STATES:
             return MediaType.MUSIC
         return MediaType.CHANNEL
 

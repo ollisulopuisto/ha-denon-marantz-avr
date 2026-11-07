@@ -8,6 +8,7 @@ from custom_components.denon_marantz_avr.media_player import (
     DenonDevice,
 )
 from denonavr.const import ALL_TELNET_EVENTS
+from homeassistant.components.media_player import MediaPlayerState, MediaType
 
 
 @pytest.fixture
@@ -132,10 +133,44 @@ async def test_update_refreshes_input_func_sets(mock_receiver, mock_config_entry
     # Update receiver sources
     mock_receiver.netaudio_func_list = ["Online Music", "Media Server"]
     mock_receiver.playing_func_list = ["Online Music", "Media Server"]
+    mock_receiver.input_func_list = ["Online Music", "Media Server"]
 
     await device.async_update()
     assert device._netaudio_func_set == {"Online Music", "Media Server"}
     assert device._playing_func_set == {"Online Music", "Media Server"}
+    assert device.source_list == ["Online Music", "Media Server"]
+
+
+def test_source_list_cached_and_media_content_type(mock_receiver, mock_config_entry):
+    """Test source_list caching and media_content_type behavior."""
+    mock_receiver.input_func_list = ["CD", "DVD", "TV"]
+    mock_receiver.state = "playing"
+
+    device = DenonDevice(
+        receiver=mock_receiver,
+        unique_id="test_unique_id-Main",
+        config_entry=mock_config_entry,
+        update_audyssey=False,
+    )
+
+    # Initial source list should be cached
+    assert device.source_list == ["CD", "DVD", "TV"]
+    assert device.source_list is device._source_list
+
+    # media_content_type checks
+    assert device.media_content_type == MediaType.MUSIC
+
+    mock_receiver.state = MediaPlayerState.PAUSED
+    assert device.media_content_type == MediaType.MUSIC
+
+    mock_receiver.state = "paused"
+    assert device.media_content_type == MediaType.MUSIC
+
+    mock_receiver.state = "on"
+    assert device.media_content_type == MediaType.CHANNEL
+
+    mock_receiver.state = "off"
+    assert device.media_content_type == MediaType.CHANNEL
 
 
 async def test_async_will_remove_from_hass_unregisters_telnet_events(
