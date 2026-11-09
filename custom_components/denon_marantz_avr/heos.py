@@ -48,7 +48,7 @@ class HeosStreaming:
         # Precomputed lookup tables for O(1) source and favorite queries
         self._source_list: list[str] = []
         self._favorite_indices: dict[str, int] = {}
-        self._inputs_by_name: dict[str, str] = {}
+        self._inputs_by_name: dict[str, MediaItem] = {}
         self._inputs_by_media_id: dict[str, str] = {}
         self._favorites_by_name: dict[str, str] = {}
         self._favorites_by_media_id: dict[str, str] = {}
@@ -125,7 +125,7 @@ class HeosStreaming:
             favorite.name: index for index, favorite in self.favorites.items()
         }
 
-        self._inputs_by_name = {source.name: source.name for source in self.inputs}
+        self._inputs_by_name = {source.name: source for source in self.inputs}
         self._inputs_by_media_id = {
             source.media_id: source.name
             for source in self.inputs
@@ -142,12 +142,21 @@ class HeosStreaming:
         }
 
     def source_list(self) -> list[str]:
-        """Return favorite + input source names."""
-        return list(self._source_list)
+        """
+        Return favorite + input source names.
+
+        Returns the precomputed list directly to avoid redundant list allocations
+        on frequent state queries.
+        """
+        return self._source_list
 
     def favorite_index(self, name: str) -> int | None:
-        """Return the preset index of a favorite by name."""
+        """Return the preset index of a favorite by name in O(1) time."""
         return self._favorite_indices.get(name)
+
+    def input_source(self, name: str) -> MediaItem | None:
+        """Return the MediaItem for an input source by name in O(1) time."""
+        return self._inputs_by_name.get(name)
 
     def resolve_source(
         self,
@@ -161,8 +170,8 @@ class HeosStreaming:
         Preserves precedence: input sources take priority over favorites,
         and station name match takes priority over media_id / album_id match.
         """
-        if station is not None and (name := self._inputs_by_name.get(station)):
-            return name
+        if station is not None and (inp := self._inputs_by_name.get(station)):
+            return inp.name
         if media_id is not None and (name := self._inputs_by_media_id.get(media_id)):
             return name
         if station is not None and (name := self._favorites_by_name.get(station)):
