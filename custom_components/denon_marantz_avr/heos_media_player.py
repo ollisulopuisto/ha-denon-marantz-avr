@@ -307,10 +307,11 @@ class HeosStreamingPlayer(MediaPlayerEntity):
         if index is not None:
             await self._run("select source", self._player.play_preset_station(index))
             return
-        for input_source in self._streaming.inputs:
-            if input_source.name == source:
-                await self._run("select source", self._player.play_media(input_source))
-                return
+        # Performance optimization: Use O(1) hash map lookup instead of
+        # linear O(N) iteration over streaming inputs.
+        if (input_source := self._streaming.input_source(source)) is not None:
+            await self._run("select source", self._player.play_media(input_source))
+            return
         msg = f"Unknown source: {source}"
         raise HomeAssistantError(msg)
 

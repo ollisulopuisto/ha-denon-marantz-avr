@@ -1,10 +1,11 @@
 """Tests for HEOS streaming source and favorite resolution."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from custom_components.denon_marantz_avr.heos import HeosStreaming
 from custom_components.denon_marantz_avr.heos_media_player import HeosStreamingPlayer
+from homeassistant.exceptions import HomeAssistantError
 
 
 class MockMediaItem:
@@ -53,6 +54,22 @@ def test_favorite_index(mock_heos_streaming):
     assert mock_heos_streaming.favorite_index("Jazz Groove") == 3
     assert mock_heos_streaming.favorite_index("Nonexistent") is None
     assert mock_heos_streaming.favorite_index("AUX") is None
+
+
+def test_input_source(mock_heos_streaming):
+    """Test input_source returns the MediaItem for an input name in O(1) time."""
+    aux = mock_heos_streaming.input_source("AUX")
+    assert aux is not None
+    assert aux.name == "AUX"
+    assert aux.media_id == "input/aux"
+
+    tv = mock_heos_streaming.input_source("TV Audio")
+    assert tv is not None
+    assert tv.name == "TV Audio"
+    assert tv.media_id == "input/tv"
+
+    assert mock_heos_streaming.input_source("Radio Paradise") is None
+    assert mock_heos_streaming.input_source("Nonexistent") is None
 
 
 def test_resolve_source_inputs(mock_heos_streaming):
@@ -141,3 +158,30 @@ def test_heos_media_player_source_property(mock_heos_streaming):
     # Test completely unmatched
     now_playing.album_id = None
     assert player_entity.source is None
+
+
+async def test_heos_media_player_async_select_source(mock_heos_streaming):
+    """Test HeosStreamingPlayer.async_select_source selects favorite or input."""
+    player_mock = MagicMock()
+    player_mock.play_preset_station = MagicMock()
+    player_mock.play_media = MagicMock()
+    mock_heos_streaming.player = player_mock
+
+    player_entity = HeosStreamingPlayer(mock_heos_streaming, "test_device_id")
+    player_entity._run = AsyncMock()
+
+    # Selecting a favorite should call play_preset_station
+    await player_entity.async_select_source("Radio Paradise")
+    assert player_entity._run.call_count == 1
+    call_action, _coro = player_entity._run.call_args[0]
+    assert call_action == "select source"
+
+    # Selecting an input source should call play_media with the input MediaItem
+    player_entity._run.reset_mock()
+    await player_entity.async_select_source("TV Audio")
+    assert player_entity._run.call_count == 1
+    player_mock.play_media.assert_called_once_with(mock_heos_streaming.inputs[1])
+
+    # Selecting an unknown source should raise HomeAssistantError
+    with pytest.raises(HomeAssistantError, match="Unknown source: Unknown Input"):
+        await player_entity.async_select_source("Unknown Input")
