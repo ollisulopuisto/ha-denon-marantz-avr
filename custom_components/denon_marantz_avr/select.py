@@ -341,14 +341,8 @@ class SoundModeSelect(DenonControlsEntity, SelectEntity):
         """Return the selectable sound modes."""
         web = self._web_modes
         if web is not None:
-            return web.names
-        # Read the fallback list live: denonavr's match_sound_mode() adds
-        # receiver-reported modes to its map at runtime, and a cached list
-        # froze those discoveries out of the dropdown for the entity's
-        # lifetime. The allocation per access is a handful of strings.
+            return list(web.names)
         return list(self.coordinator.receiver.sound_mode_list or [])
-
-
 
     @property
     def current_option(self) -> str | None:
