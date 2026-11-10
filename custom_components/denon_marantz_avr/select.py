@@ -327,6 +327,11 @@ class SoundModeSelect(DenonControlsEntity, SelectEntity):
     def __init__(self, coordinator: DenonControlsCoordinator) -> None:
         """Initialize the sound mode select."""
         super().__init__(coordinator, "sound_mode")
+        # Performance optimization: Pre-cache fallback sound mode list.
+        # In upstream denonavr, receiver.sound_mode_list allocates a new list
+        # from dict keys on every access. Caching avoids repeated list allocations
+        # during frequent entity state queries and updates.
+        self._fallback_options = list(self.coordinator.receiver.sound_mode_list or [])
 
     @property
     def _web_modes(self) -> SoundModeSettings | None:
@@ -341,8 +346,8 @@ class SoundModeSelect(DenonControlsEntity, SelectEntity):
         """Return the selectable sound modes."""
         web = self._web_modes
         if web is not None:
-            return list(web.names)
-        return list(self.coordinator.receiver.sound_mode_list or [])
+            return web.names
+        return self._fallback_options
 
     @property
     def current_option(self) -> str | None:
