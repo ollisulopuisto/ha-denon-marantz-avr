@@ -31,21 +31,22 @@ def mock_coordinator():
     return coordinator
 
 
-def test_sound_mode_select_fallback_options_cached(mock_coordinator):
-    """Test that SoundModeSelect pre-caches receiver fallback sound_mode_list."""
+def test_sound_mode_select_fallback_options_live(mock_coordinator):
+    """Fallback options follow the receiver's live sound_mode_list."""
     entity = SoundModeSelect(mock_coordinator)
 
-    # Initial options should match fallback
     assert entity.options == ["Stereo", "Direct", "Dolby Surround"]
-    assert entity.options is entity._fallback_options
 
-    # Verify that mutating or calling receiver.sound_mode_list does not change cached options
-    mock_coordinator.receiver.sound_mode_list = ["Other"]
-    assert entity.options == ["Stereo", "Direct", "Dolby Surround"]
-    assert entity.options is entity._fallback_options
+    # The receiver discovers a mode at runtime (denonavr's match_sound_mode
+    # adds unknown reported modes to its map); it must become selectable.
+    mock_coordinator.receiver.sound_mode_list = [
+        "Stereo", "Direct", "Dolby Surround", "CUSTOM MODE",
+    ]
+    assert entity.options == ["Stereo", "Direct", "Dolby Surround", "CUSTOM MODE"]
 
-    # Current option should read from receiver
-    assert entity.current_option == "Stereo"
+    # Current option reads from the receiver, including a discovered mode.
+    mock_coordinator.receiver.sound_mode = "CUSTOM MODE"
+    assert entity.current_option == "CUSTOM MODE"
 
 
 def test_sound_mode_select_web_modes_options(mock_coordinator):

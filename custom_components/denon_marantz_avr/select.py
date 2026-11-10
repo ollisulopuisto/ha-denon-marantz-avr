@@ -327,11 +327,6 @@ class SoundModeSelect(DenonControlsEntity, SelectEntity):
     def __init__(self, coordinator: DenonControlsCoordinator) -> None:
         """Initialize the sound mode select."""
         super().__init__(coordinator, "sound_mode")
-        # Performance optimization: Pre-cache fallback sound mode list.
-        # In upstream denonavr, receiver.sound_mode_list allocates a new list
-        # from dict keys on every access. Caching avoids repeated list allocations
-        # during frequent entity state queries and updates.
-        self._fallback_options = list(self.coordinator.receiver.sound_mode_list or [])
 
     @property
     def _web_modes(self) -> SoundModeSettings | None:
@@ -347,7 +342,13 @@ class SoundModeSelect(DenonControlsEntity, SelectEntity):
         web = self._web_modes
         if web is not None:
             return web.names
-        return self._fallback_options
+        # Read the fallback list live: denonavr's match_sound_mode() adds
+        # receiver-reported modes to its map at runtime, and a cached list
+        # froze those discoveries out of the dropdown for the entity's
+        # lifetime. The allocation per access is a handful of strings.
+        return list(self.coordinator.receiver.sound_mode_list or [])
+
+
 
     @property
     def current_option(self) -> str | None:
