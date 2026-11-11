@@ -204,6 +204,12 @@ class AudysseySelect(DenonControlsEntity, SelectEntity):
         super().__init__(coordinator, description.key)
         self.entity_description = description
         self._attr_translation_key = description.translation_key
+        # Performance optimization: Pre-cache options list during initialization.
+        # Upstream denonavr properties (e.g. dynamic_volume_setting_list) construct
+        # and allocate a new list from dictionary keys on every access. Pre-caching
+        # as _attr_options eliminates repeated list allocations and property calls
+        # on every Home Assistant state read and coordinator refresh.
+        self._attr_options = list(description.options_fn() or [])
 
     @property
     def available(self) -> bool:
@@ -219,11 +225,6 @@ class AudysseySelect(DenonControlsEntity, SelectEntity):
     def current_option(self) -> str | None:
         """Return the current setting."""
         return self.entity_description.value_fn()
-
-    @property
-    def options(self) -> list[str]:
-        """Return available settings."""
-        return self.entity_description.options_fn() or []
 
     async def async_select_option(self, option: str) -> None:
         """Change the setting."""
